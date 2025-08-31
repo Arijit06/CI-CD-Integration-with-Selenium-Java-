@@ -1,0 +1,204 @@
+name: Portfolio Tests - Cross Repository Trigger
+
+on:
+  workflow_dispatch:
+  schedule:
+  repository_dispatch:
+    types: [portfolio-updated]  # Listens for trigger from portfolio repo
+
+env:
+  PORTFOLIO_URL: ${{ github.event.client_payload.portfolio_url || 'https://arijit06.github.io/ArijitSinghaRoy/' }}
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+jobs:
+  test-portfolio:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout test code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@latest
+
+      - name: Display trigger information
+        run: |
+          echo "Triggered by portfolio repository update"
+          echo "Portfolio URL: ${{ env.PORTFOLIO_URL }}"
+          echo "Commit SHA: ${{ github.event.client_payload.commit_sha }}"
+          echo "Commit Message: ${{ github.event.client_payload.commit_message }}"
+          echo "Branch: ${{ github.event.client_payload.branch }}"
+          echo "Pusher: ${{ github.event.client_payload.pusher }}"
+
+      # We want to check if the portfolio site is up before running tests to save resources and time.
+      # If the site is down, we skip the tests and notify.
+      # When you use response=$(command), bash executes the command inside the parentheses and assigns its output to the variable.
+      #The exit status of the assignment becomes the exit status of the command being executed. This means if curl fails, the assignment operation itself will reflect that failure.
+      # The -s or --silent flag suppresses curl's progress meter and error messages, making the command run in quiet mode.
+      #This prevents the typical progress bar output that would otherwise appear during the HTTP request
+      #-o /dev/null -w "%{http_code} instructs curl to discard the actual content of the response (by redirecting it to /dev/null) and only output the HTTP status code of the response.
+      # $response -ne 200  if the response code is not equal to 200 we break the workflow
+
+      - name: Verify portfolio is accessible
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" $PORTFOLIO_URL)
+          if [ $response -ne 200 ]; then
+            echo "Portfolio site is not accessible (HTTP $response)"
+            exit 1
+          fi
+          echo "Portfolio site is accessible"
+
+      - name: Run automation tests
+        run: |
+          mvn clean test -Dheadless=true
+
+      - name: Generate test report
+        if: always()
+        run: |
+          echo "## Portfolio Test Results" > test-summary.md
+          echo "**Test URL:** $PORTFOLIO_URL" >> test-summary.md
+          echo "**Test Timestamp:** $(date)" >> test-summary.md
+          echo "**Triggered by Portfolio Commit:** ${{ github.event.client_payload.commit_sha }}" >> test-summary.md
+          echo "**Portfolio Branch:** ${{ github.event.client_payload.branch }}" >> test-summary.md
+          echo "**Commit Message:** ${{ github.event.client_payload.commit_message }}" >> test-summary.md
+          if [ -f target/surefire-reports/TEST-*.xml ]; then
+            echo "**Status:** Tests completed successfully" >> test-summary.md
+          else
+            echo "**Status:** Tests failed to complete" >> test-summary.md
+          fi
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ github.run_number }}
+          path: |
+            target/surefire-reports/
+            test-summary.md
+
+      # Enhanced Slack notification for success
+      - name: Notify success on Slack
+        if: success()
+        run: |
+          curl -X POST "$SLACK_WEBHOOK" \
+          -H "Content-type: application/json" \
+          --data '{
+            "text": "✅ Portfolio tests passed after deployment!",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "✅ Portfolio Tests Passed"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Portfolio URL:*\n<${{ env.PORTFOLIO_URL }}|View Live Site>"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Triggered by:*\n${{ github.event.client_payload.pusher }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Portfolio Commit:*\n`${{ github.event.client_payload.commit_sha }}`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\n`${{ github.event.client_payload.branch }}`"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Commit Message:*\n${{ github.event.client_payload.commit_message }}"
+                }
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Test Logs"
+                    },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                ]
+              }
+            ]
+          }'
+
+      # Enhanced Slack notification for failure
+      - name: Notify failure on Slack
+        if: failure()
+        run: |
+          curl -X POST "$SLACK_WEBHOOK" \
+          -H "Content-type: application/json" \
+          --data '{
+            "text": "🚨 Portfolio tests failed after deployment!",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🚨 Portfolio Tests Failed"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Portfolio URL:*\n<${{ env.PORTFOLIO_URL }}|Check Site>"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Triggered by:*\n${{ github.event.client_payload.pusher }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Portfolio Commit:*\n`${{ github.event.client_payload.commit_sha }}`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\n`${{ github.event.client_payload.branch }}`"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Commit Message:*\n${{ github.event.client_payload.commit_message }}"
+                }
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Error Logs"
+                    },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                    "style": "danger"
+                  }
+                ]
+              }
+            ]
+          }'
