@@ -2,9 +2,9 @@ name: Portfolio Tests - Cross Repository Trigger
 
 on:
   workflow_dispatch:
-  schedule:
   repository_dispatch:
-    types: [portfolio-updated]  # Listens for trigger from portfolio repo
+    types: [portfolio-updated]
+   # Listens for trigger from portfolio repo
 
 env:
   PORTFOLIO_URL: ${{ github.event.client_payload.portfolio_url || 'https://arijit06.github.io/ArijitSinghaRoy/' }}
