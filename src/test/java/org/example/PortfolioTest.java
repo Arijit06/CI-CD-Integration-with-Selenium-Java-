@@ -17,8 +17,8 @@ import org.example.utils.ScreenshotUtil;
 import java.time.Duration;
 
 public class PortfolioTest {
-    private WebDriver driver;
-    private WebDriverWait wait;
+    private static final ThreadLocal<WebDriver> driver = new ThreadLocal<>();
+    private static final ThreadLocal<WebDriverWait> wait = new ThreadLocal<>();
     private static final String BASE_URL = "https://arijit06.github.io/ArijitSinghaRoy/";
 
     @BeforeMethod
@@ -30,56 +30,61 @@ public class PortfolioTest {
             options.addArguments("--headless");
             options.addArguments("--window-size=1920,1080");
         }
-        driver = new ChromeDriver(options);
-        driver.manage().window().maximize();
-        wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        WebDriver webDriver = new ChromeDriver(options);
+        webDriver.manage().window().maximize();
+        driver.set(webDriver);
+        wait.set(new WebDriverWait(webDriver, Duration.ofSeconds(10)));
     }
 
     @Test
     public void testHomePageLoads() {
-        driver.get(BASE_URL);
-        ScreenshotUtil.takeScreenshot(driver, "homepage");
-        String title = driver.getTitle();
+        driver.get().get(BASE_URL);
+        driver.get().manage().timeouts().implicitlyWait(Duration.ofSeconds(2));
+        ScreenshotUtil.takeScreenshot(driver.get(), "homepage");
+        String title = driver.get().getTitle();
         Assert.assertTrue(title.contains("Arijit Singha Roy"), "Title should contain the name");
     }
 
     @Test
     public void testNavigationLinks() {
-        driver.get(BASE_URL);
-        ScreenshotUtil.takeScreenshot(driver, "navigation_start");
+        driver.get().get(BASE_URL);
+        driver.get().manage().timeouts().implicitlyWait(Duration.ofSeconds(2));
+        ScreenshotUtil.takeScreenshot(driver.get(), "navigation_start");
         // Test Home section
-        WebElement aboutLink = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//a[contains(text(),'Home')]")));
+        WebElement aboutLink = wait.get().until(ExpectedConditions.elementToBeClickable(By.xpath("//button[contains(text(),'Home')]")));
         aboutLink.click();
-        ScreenshotUtil.takeScreenshot(driver, "navigation_home_clicked");
+        driver.get().manage().timeouts().implicitlyWait(Duration.ofSeconds(2));
+        ScreenshotUtil.takeScreenshot(driver.get(), "navigation_home_clicked");
         // Test Skills section
-        WebElement skillsLink = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//a[contains(text(),'Portfolio')]")));
+        WebElement skillsLink = wait.get().until(ExpectedConditions.elementToBeClickable(By.xpath("//button[contains(text(),'Portfolio')]")));
         skillsLink.click();
-        ScreenshotUtil.takeScreenshot(driver, "navigation_portfolio_clicked");
+        driver.get().manage().timeouts().implicitlyWait(Duration.ofSeconds(2));
+        ScreenshotUtil.takeScreenshot(driver.get(), "navigation_portfolio_clicked");
         // Test Projects section
-        WebElement projectsLink = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//a[contains(text(),'Contact')]")));
+        WebElement projectsLink = wait.get().until(ExpectedConditions.elementToBeClickable(By.xpath("//button[contains(text(),'Contact')]")));
         projectsLink.click();
-        ScreenshotUtil.takeScreenshot(driver, "navigation_contact_clicked");
+        ScreenshotUtil.takeScreenshot(driver.get(), "navigation_contact_clicked");
     }
 
     @Test
     public void testSocialMediaLinks() {
-        driver.get(BASE_URL);
-        
+        driver.get().get(BASE_URL);
         // Test LinkedIn link
-        WebElement linkedinLink = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//a[contains(@href,'linkedin.com')]")));
+        WebElement linkedinLink = wait.get().until(ExpectedConditions.elementToBeClickable(By.xpath("//a[contains(@href,'linkedin.com')]")));
         String linkedinHref = linkedinLink.getAttribute("href");
         Assert.assertTrue(linkedinHref.contains("linkedin.com"), "LinkedIn link should be present");
-
         // Test GitHub link
-        WebElement githubLink = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//a[contains(@href,'github.com')]")));
+        WebElement githubLink = wait.get().until(ExpectedConditions.elementToBeClickable(By.xpath("//a[contains(@href,'github.com')]")));
         String githubHref = githubLink.getAttribute("href");
         Assert.assertTrue(githubHref.contains("github.com"), "GitHub link should be present");
     }
 
     @AfterMethod
     public void tearDown() {
-        if (driver != null) {
-            driver.quit();
+        if (driver.get() != null) {
+            driver.get().quit();
+            driver.remove();
+            wait.remove();
         }
     }
 }
